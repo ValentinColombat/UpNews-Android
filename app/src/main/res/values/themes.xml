@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.UpNews" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <style name="Theme.UpNews.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#F9F8F5</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/launch</item>
+        <item name="postSplashScreenTheme">@style/Theme.UpNews</item>
+    </style>
+
+</resources>

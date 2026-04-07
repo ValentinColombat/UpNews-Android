@@ -1,0 +1,33 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+/.idea/deploymentTargetSelector.xml
+/.idea/deviceManager.xml
+/.idea/markdown.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Release build artifacts
+/app/release/
+
+# Keystore — ne jamais committer les clés de signature
+*.jks
+*.keystore
+keystore.properties
+
+# Claude Code — configuration locale
+.claude/
+
+# Secrets — ne jamais committer les clés API
+app/src/main/java/com/valentincolombat/upnews/data/remote/SupabaseSecrets.kt
+app/src/main/java/com/valentincolombat/upnews/service/GoogleSecrets.kt

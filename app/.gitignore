@@ -1,0 +1,5 @@
+/build
+
+# Secrets — ne jamais committer
+**/data/remote/SupabaseSecrets.kt
+**/data/remote/GoogleSecrets.kt
