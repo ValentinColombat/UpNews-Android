@@ -92,6 +92,7 @@ import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
 import coil.compose.SubcomposeAsyncImage
 import coil.compose.SubcomposeAsyncImageContent
+import coil.request.ImageRequest
 
 import com.valentincolombat.upnews.R
 import com.valentincolombat.upnews.data.model.Article
@@ -476,7 +477,11 @@ private fun AudioPlayer(
         Box {
             // Fond : image de l'article floutée
             SubcomposeAsyncImage(
-                model = article.imageUrl ?: R.drawable.fallback,
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(article.imageUrl)
+                    .fallback(R.drawable.fallback)
+                    .error(R.drawable.fallback)
+                    .build(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
@@ -764,7 +769,11 @@ private fun ContentSection(article: Article) {
             // Image inline après le 2ème paragraphe
             if (index == 1 && paragraphs.size > 2) {
                 SubcomposeAsyncImage(
-                    model = article.imageUrl ?: R.drawable.fallback,
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(article.imageUrl)
+                        .fallback(R.drawable.fallback)
+                        .error(R.drawable.fallback)
+                        .build(),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
@@ -775,14 +784,6 @@ private fun ContentSection(article: Article) {
                 ) {
                     when (painter.state) {
                         is AsyncImagePainter.State.Loading -> ImageShimmer()
-                        is AsyncImagePainter.State.Error -> {
-                            androidx.compose.foundation.Image(
-                                painter = painterResource(R.drawable.fallback),
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
                         else -> SubcomposeAsyncImageContent()
                     }
                 }
