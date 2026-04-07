@@ -1,6 +1,11 @@
 # UpNews — One positive story a day.
 
 > In a world of endless bad news, UpNews gives you one carefully selected positive story each day — nothing more, nothing less.
+<p align="center">
+    <img width="256" height="256" alt="mousse-app" src="https://github.com/user-attachments/assets/3d7d6f7d-5e05-4652-bac5-b0f565a6b9ca" />
+    <img width="256" height="256" alt="ValentinColombat_3D_render__a_friendly_wolf_with_a_kayak_--pr_1c65b038-c80c-4c3e-a537-4c4fd3876470_3" src="https://github.com/user-attachments/assets/44f20e03-3773-410d-a504-89b1abee0f72" />
+    <img width="256" height="256" alt="ValentinColombat_une_panthre_des_neiges_--profile_laab5d2_--v_b421df50-e095-454d-859f-ce695a892453_2" src="https://github.com/user-attachments/assets/1750eb36-4a46-43fa-8ff7-a8d6c66b57e1" />
+</p>
 
 ---
 
