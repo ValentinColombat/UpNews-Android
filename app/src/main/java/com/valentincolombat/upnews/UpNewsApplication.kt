@@ -2,7 +2,7 @@ package com.valentincolombat.upnews
 
 import android.app.Application
 import coil.ImageLoader
-import coil.SingletonImageLoader
+import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.valentincolombat.upnews.data.billing.BillingManager
@@ -11,7 +11,7 @@ import com.valentincolombat.upnews.service.NotificationManager
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
-class UpNewsApplication : Application(), SingletonImageLoader.Factory {
+class UpNewsApplication : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
