@@ -202,6 +202,7 @@ class ProfileViewModel : ViewModel() {
     fun hideDeleteDialog()  { _showDeleteDialog.value = false }
     fun showDeleteInfo()    { _showDeleteInfo.value = true    }
     fun hideDeleteInfo()    { _showDeleteInfo.value = false   }
+    fun clearDeleteError()  { _deleteError.value = null       }
 
     fun deleteAccount() {
         viewModelScope.launch {
@@ -236,4 +237,5 @@ class ProfileViewModel : ViewModel() {
 
     fun openCategoryPicker()  { _showCategoryPicker.value = true  }
     fun closeCategoryPicker() { _showCategoryPicker.value = false }
+
 }

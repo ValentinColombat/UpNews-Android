@@ -42,32 +42,24 @@ class AuthRepository private constructor() {
     // MARK: - Auth Status
 
     /** Vérifie si l'utilisateur est déjà connecté.
-     *  Attend la fin du refresh automatique du token (évite le faux-négatif sur access token expiré).
-     *  En cas d'erreur réseau ou de timeout, on se rabat sur la session cachée localement :
-     *  un token présent en cache = l'utilisateur reste authentifié (évite une déconnexion surprise). */
+     *
+     *  awaitInitialization() suspend jusqu'à ce que le SDK ait :
+     *    1. chargé la session depuis SharedPreferences
+     *    2. rafraîchi l'access token si expiré (échange du refresh token)
+     *  Après ce point, currentSessionOrNull() est fiable à 100% — pas besoin
+     *  de timeout ni de fallback : l'état est définitif.
+     */
     suspend fun checkAuthStatus() {
-        try {
-            val status = withTimeoutOrNull(5_000) {
-                client.auth.sessionStatus
-                    .first { it !is SessionStatus.Initializing }
-            }
-            if (status is SessionStatus.Authenticated) {
-                _isAuthenticated.value = true
-                _currentUser.value = client.auth.currentUserOrNull()
-                return
-            }
-            // Timeout ou statut non-authentifié : dernier recours sur le cache local
-            fallbackToLocalSession()
-        } catch (e: Exception) {
-            // Erreur réseau pendant le refresh du token : on ne déconnecte pas brutalement,
-            // on vérifie si une session est toujours présente en cache local.
-            fallbackToLocalSession()
+        // Timeout de sécurité : si le SDK reste bloqué en Initializing (bug SDK,
+        // stockage corrompu), on ne suspend pas indéfiniment. Au-delà de 10s,
+        // currentSessionOrNull() est appelé tel quel — s'il retourne null,
+        // l'utilisateur va sur AUTH, ce qui est le comportement le plus sûr.
+        withTimeoutOrNull(10_000) {
+            client.auth.sessionStatus.first { it !is SessionStatus.Initializing }
         }
-    }
 
-    private fun fallbackToLocalSession() {
-        val cached = client.auth.currentSessionOrNull()
-        if (cached != null) {
+        val session = client.auth.currentSessionOrNull()
+        if (session != null) {
             _isAuthenticated.value = true
             _currentUser.value = client.auth.currentUserOrNull()
         } else {

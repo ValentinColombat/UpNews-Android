@@ -109,6 +109,12 @@ class LibraryViewModel : ViewModel() {
         }
     }
 
+    fun refreshFavoriteIds() {
+        viewModelScope.launch {
+            runCatching { _favoriteIds.value = interactionRepo.loadFavoriteIds() }
+        }
+    }
+
     // MARK: - Toggle favori
 
     fun toggleFavorite(articleId: String) {

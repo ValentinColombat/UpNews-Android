@@ -77,7 +77,7 @@ import com.valentincolombat.upnews.ui.theme.UpNewsBlueMid
 import com.valentincolombat.upnews.ui.theme.UpNewsOrange
 
 @Composable
-fun LibraryScreen(vm: LibraryViewModel = viewModel()) {
+fun LibraryScreen(onGoHome: () -> Unit = {}, vm: LibraryViewModel = viewModel()) {
 
     val articles          by vm.articles.collectAsStateWithLifecycle()
     val isLoading         by vm.isLoading.collectAsStateWithLifecycle()
@@ -94,10 +94,19 @@ fun LibraryScreen(vm: LibraryViewModel = viewModel()) {
     // MARK: - Overlays
 
     selectedArticle?.let { article ->
-        ArticleDetailScreen(article = article, autoPlayAudio = false, onBack = {
-            selectedArticle = null
-            vm.refreshReadIds()
-        })
+        ArticleDetailScreen(
+            article = article,
+            autoPlayAudio = false,
+            onBack = {
+                selectedArticle = null
+                vm.refreshReadIds()
+                vm.refreshFavoriteIds()
+            },
+            onGoHome = {
+                selectedArticle = null
+                onGoHome()
+            }
+        )
         return
     }
 
@@ -159,7 +168,8 @@ fun LibraryScreen(vm: LibraryViewModel = viewModel()) {
                                 article   = article,
                                 dateLabel = vm.formatDateFR(article.publishedDate),
                                 onTap     = { vm.showPaywall() },
-                                isLocked  = true
+                                isLocked  = true,
+                                isRead    = readIds.contains(article.id)
                             )
                         }
                     }
@@ -315,7 +325,7 @@ private fun FavoritesChip(active: Boolean, onClick: () -> Unit) {
             modifier = Modifier.size(12.dp)
         )
         Text(
-            text       = "Favoris",
+            text       = "Enregistrés",
             fontSize   = 12.sp,
             fontWeight = FontWeight.SemiBold,
             color      = contentColor
@@ -438,7 +448,7 @@ private fun ArticleCard(
                 } else {
                     Icon(
                         imageVector        = Icons.Rounded.AutoStories,
-                        contentDescription = if (isFavorite) "Retirer des favoris" else "Ajouter aux favoris",
+                        contentDescription = if (isFavorite) "Retirer des enregistrés" else "Enregistrer",
                         tint               = if (isFavorite) UpNewsOrange else Color.Gray,
                         modifier           = Modifier.size(20.dp).clickable(
                             interactionSource = remember { MutableInteractionSource() },
@@ -478,7 +488,7 @@ private fun EmptyStateView(showOnlyFavorites: Boolean) {
             )
         }
         Text(
-            text       = if (showOnlyFavorites) "Aucun article favori" else "Aucun article disponible",
+            text       = if (showOnlyFavorites) "Aucun article enregistré" else "Aucun article disponible",
             fontSize   = 15.sp,
             fontWeight = FontWeight.Bold,
             color      = Color.Black

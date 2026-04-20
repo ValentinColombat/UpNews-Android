@@ -22,6 +22,7 @@ import com.valentincolombat.upnews.data.model.Article
 import com.valentincolombat.upnews.data.repository.InteractionRepository
 import com.valentincolombat.upnews.data.repository.UserRepository
 import com.valentincolombat.upnews.service.AudioPlaybackService
+import com.valentincolombat.upnews.service.NotificationManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -195,10 +196,12 @@ class ArticleDetailViewModel(
                 if (_durationMs.value == 0L && controller.duration > 0)
                     _durationMs.value = controller.duration
 
-                // Limitation free à 15s : on arrête le polling
+                // Limitation free à 15s : stop() plutôt que pause() pour passer en STATE_IDLE
+                // → MediaSessionService retire la notification lock screen automatiquement
                 if (!isPremium && posMs >= freeLimit) {
                     _audioLimitReached.value = true
-                    pause()
+                    mediaController?.stop()
+                    NotificationManager.postAudioLimitNotification(getApplication())
                     break
                 }
 

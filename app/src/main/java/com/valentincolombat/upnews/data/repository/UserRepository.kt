@@ -89,6 +89,12 @@ class UserRepository private constructor() {
     private val _registrationDate = MutableStateFlow<LocalDate?>(null)
     val registrationDate: StateFlow<LocalDate?> = _registrationDate.asStateFlow()
 
+    /** true dès que loadArticlesAndStats() a terminé au moins une fois avec succès.
+     *  Passe à false au début de chaque chargement → permet à l'UI d'afficher
+     *  des skeletons pendant que les articles arrivent en arrière-plan. */
+    private val _isDataReady = MutableStateFlow(false)
+    val isDataReady: StateFlow<Boolean> = _isDataReady.asStateFlow()
+
     // MARK: - Private fields
 
     private var currentUserId: String? = null
@@ -221,8 +227,10 @@ class UserRepository private constructor() {
         }
     }
 
-    /** Charge uniquement streak + articles + stats (après loadUserProfile) */
+    /** Charge uniquement streak + articles + stats (après loadUserProfile).
+     *  Bascule isDataReady false→true pour signaler à l'UI de sortir du skeleton. */
     suspend fun loadArticlesAndStats() {
+        _isDataReady.value = false
         if (currentUserId == null) {
             currentUserId = client.auth.currentSessionOrNull()?.user?.id?.toString()
         }
@@ -231,6 +239,7 @@ class UserRepository private constructor() {
         loadArticles()
         _articlesReadToday.value = fetchArticlesReadToday()
         _articlesReadThisMonth.value = fetchArticlesReadThisMonth()
+        _isDataReady.value = true
     }
 
     /** Charge le profil utilisateur complet depuis Supabase */
@@ -428,6 +437,7 @@ class UserRepository private constructor() {
         _subscriptionTier.value = SubscriptionTier.FREE
         _isOGMember.value = false
         _registrationDate.value = null
+        _isDataReady.value = false
         currentUserId = null
     }
 

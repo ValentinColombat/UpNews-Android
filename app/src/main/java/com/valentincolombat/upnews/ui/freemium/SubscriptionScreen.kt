@@ -21,6 +21,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -52,6 +56,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,13 +88,15 @@ fun SubscriptionScreen(
     onDismiss: () -> Unit,
     vm: SubscriptionViewModel = viewModel()
 ) {
-    val isLoading      by vm.isLoading.collectAsStateWithLifecycle()
-    val monthlyProduct by vm.monthlyProduct.collectAsStateWithLifecycle()
-    val yearlyProduct  by vm.yearlyProduct.collectAsStateWithLifecycle()
-    val errorMessage   by vm.errorMessage.collectAsStateWithLifecycle()
-    val purchaseSuccess by vm.purchaseSuccess.collectAsStateWithLifecycle()
+    val isLoading        by vm.isLoading.collectAsStateWithLifecycle()
+    val monthlyProduct   by vm.monthlyProduct.collectAsStateWithLifecycle()
+    val yearlyProduct    by vm.yearlyProduct.collectAsStateWithLifecycle()
+    val errorMessage     by vm.errorMessage.collectAsStateWithLifecycle()
+    val purchaseSuccess  by vm.purchaseSuccess.collectAsStateWithLifecycle()
+    val activationFailed by vm.activationFailed.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     var selectedProductId by remember { mutableStateOf<String?>(null) }
     var showContent       by remember { mutableStateOf(false) }
@@ -116,15 +123,25 @@ fun SubscriptionScreen(
         }
     }
 
-    // Dialog erreur
+    // Dialog erreur — deux cas distincts : paiement Play Store échoué vs activation serveur échouée
     if (errorMessage != null) {
         AlertDialog(
             onDismissRequest = { vm.clearError() },
-            title = { Text("Abonnement") },
+            title = { Text(if (activationFailed) "Paiement reçu" else "Abonnement") },
             text  = { Text(errorMessage ?: "L'achat a échoué. Réessaie dans quelques instants.") },
             confirmButton = {
-                TextButton(onClick = { vm.clearError() }) { Text("OK") }
-            }
+                if (activationFailed) {
+                    TextButton(onClick = {
+                        vm.clearError()
+                        coroutineScope.launch { vm.restorePurchases() }
+                    }) { Text("Restaurer") }
+                } else {
+                    TextButton(onClick = { vm.clearError() }) { Text("OK") }
+                }
+            },
+            dismissButton = if (activationFailed) {
+                { TextButton(onClick = { vm.clearError() }) { Text("Plus tard") } }
+            } else null
         )
     }
 
@@ -181,11 +198,13 @@ fun SubscriptionScreen(
             }
 
             // Contenu scrollable (hauteur max 640dp)
+            val scrollState = rememberScrollState()
+            Box(modifier = Modifier.fillMaxWidth().height(680.dp)) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(680.dp)
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scrollState)
                     .padding(horizontal = 24.dp)
                     .padding(bottom = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
@@ -235,6 +254,46 @@ fun SubscriptionScreen(
 
                 // Liens légaux
                 LegalSection(context = context)
+            }
+            // Barre de scroll discrète
+            if (scrollState.maxValue > 0) {
+                val thumbRatio = 680f / (680f + scrollState.maxValue)
+                val thumbFraction = scrollState.value.toFloat() / scrollState.maxValue
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 6.dp)
+                        .width(3.dp)
+                        .height(680.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Color.Gray.copy(alpha = 0.12f))
+                        .drawWithContent {
+                            drawContent()
+                            val trackH = size.height
+                            val thumbH = trackH * thumbRatio
+                            val thumbY = (trackH - thumbH) * thumbFraction
+                            drawRoundRect(
+                                color = Color.Gray.copy(alpha = 0.4f),
+                                topLeft = Offset(0f, thumbY),
+                                size = Size(size.width, thumbH),
+                                cornerRadius = CornerRadius(size.width / 2)
+                            )
+                        }
+                )
+            }
+
+            // Dégradé bas — indique visuellement qu'il y a du contenu à scroller
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(72.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.White.copy(alpha = 0f), Color.White)
+                        )
+                    )
+            )
             }
         }
     }
@@ -293,28 +352,28 @@ private fun FeaturesSection() {
         Feature(Icons.Rounded.Pets,           "Tous les compagnons"),
         Feature(Icons.Rounded.Star,           "XP bonus x2")
     )
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         features.forEach { feature ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .shadow(2.dp, RoundedCornerShape(12.dp), spotColor = Color.Black.copy(alpha = 0.08f))
-                    .clip(RoundedCornerShape(12.dp))
+                    .shadow(2.dp, RoundedCornerShape(10.dp), spotColor = Color.Black.copy(alpha = 0.08f))
+                    .clip(RoundedCornerShape(10.dp))
                     .background(Color.White)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
-                        .background(UpNewsBlueMid.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
+                        .size(32.dp)
+                        .background(UpNewsBlueMid.copy(alpha = 0.15f), RoundedCornerShape(8.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(feature.icon, null, tint = UpNewsBlueMid, modifier = Modifier.size(18.dp))
+                    Icon(feature.icon, null, tint = UpNewsBlueMid, modifier = Modifier.size(16.dp))
                 }
                 Text(feature.label, fontSize = 13.sp, fontWeight = FontWeight.Normal, color = Color.Black, modifier = Modifier.weight(1f), maxLines = 1)
-                Icon(Icons.Rounded.CheckCircle, null, tint = UpNewsBlueMid, modifier = Modifier.size(18.dp))
+                Icon(Icons.Rounded.CheckCircle, null, tint = UpNewsBlueMid, modifier = Modifier.size(16.dp))
             }
         }
     }
@@ -535,9 +594,7 @@ private fun LegalSection(context: android.content.Context) {
             fontSize  = 12.sp,
             color     = Color.Gray,
             modifier  = Modifier.clickable {
-                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
-                    android.net.Uri.parse("https://valentincolombat.github.io/upnews-CGU/"))
-                context.startActivity(intent)
+                com.valentincolombat.upnews.utils.openUrl(context, "https://valentincolombat.github.io/upnews-CGU/")
             }
         )
         // Politique de confidentialité
@@ -546,9 +603,7 @@ private fun LegalSection(context: android.content.Context) {
             fontSize  = 12.sp,
             color     = Color.Gray,
             modifier  = Modifier.clickable {
-                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
-                    android.net.Uri.parse("https://valentincolombat.github.io/upnews-privacy/"))
-                context.startActivity(intent)
+                com.valentincolombat.upnews.utils.openUrl(context, "https://valentincolombat.github.io/upnews-privacy/")
             }
         )
     }

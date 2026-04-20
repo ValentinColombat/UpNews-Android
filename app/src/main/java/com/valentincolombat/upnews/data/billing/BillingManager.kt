@@ -15,19 +15,21 @@ import com.android.billingclient.api.QueryPurchasesParams
 import com.android.billingclient.api.acknowledgePurchase
 import com.android.billingclient.api.queryProductDetails
 import com.android.billingclient.api.queryPurchasesAsync
+import androidx.core.app.NotificationManagerCompat
 import com.valentincolombat.upnews.data.model.SubscriptionTier
 import com.valentincolombat.upnews.data.remote.SupabaseClient
 import com.valentincolombat.upnews.data.repository.UserRepository
-import io.github.jan.supabase.auth.auth
-import io.github.jan.supabase.postgrest.from
+import com.valentincolombat.upnews.service.NotificationManager
+import io.github.jan.supabase.functions.functions
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.serialization.Serializable
 
 /**
  * Équivalent Android de StoreKitManager.shared (iOS).
@@ -36,7 +38,7 @@ import kotlinx.serialization.Serializable
  *   - PRODUCT_MONTHLY : abonnement mensuel
  *   - PRODUCT_YEARLY  : abonnement annuel
  */
-class BillingManager private constructor(application: Application) {
+class BillingManager private constructor(private val application: Application) {
 
     companion object {
         // TODO: Remplacer par les vrais IDs Play Console
@@ -71,6 +73,12 @@ class BillingManager private constructor(application: Application) {
 
     private val _purchaseSuccess    = MutableStateFlow(false)
     val purchaseSuccess: StateFlow<Boolean> = _purchaseSuccess.asStateFlow()
+
+    /** true = Play Store a débité l'utilisateur mais l'activation serveur a échoué.
+     *  L'UI doit proposer "Restaurer mes achats" plutôt que de laisser l'utilisateur
+     *  croire que son paiement n'a pas abouti. */
+    private val _activationFailed   = MutableStateFlow(false)
+    val activationFailed: StateFlow<Boolean> = _activationFailed.asStateFlow()
 
     // MARK: - Private
 
@@ -177,68 +185,83 @@ class BillingManager private constructor(application: Application) {
     // MARK: - Restauration
 
     suspend fun restorePurchases() {
-        _isLoading.value = true
-        val result = billingClient.queryPurchasesAsync(
-            QueryPurchasesParams.newBuilder()
-                .setProductType(BillingClient.ProductType.SUBS)
-                .build()
-        )
-        if (result.billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-            val activePurchases = result.purchasesList.filter {
-                it.purchaseState == Purchase.PurchaseState.PURCHASED
-            }
-            if (activePurchases.isNotEmpty()) {
-                handlePurchases(activePurchases)
-            } else {
-                _errorMessage.value = "Aucun abonnement actif trouvé. Si tu penses que c'est une erreur, contacte le support."
-            }
+        if (!billingClient.isReady) {
+            _errorMessage.value = "Play Store indisponible. Vérifie ta connexion et réessaie."
+            return
         }
-        _isLoading.value = false
+        _isLoading.value = true
+        try {
+            val result = billingClient.queryPurchasesAsync(
+                QueryPurchasesParams.newBuilder()
+                    .setProductType(BillingClient.ProductType.SUBS)
+                    .build()
+            )
+            if (result.billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                val activePurchases = result.purchasesList.filter {
+                    it.purchaseState == Purchase.PurchaseState.PURCHASED
+                }
+                if (activePurchases.isNotEmpty()) {
+                    handlePurchases(activePurchases)
+                } else {
+                    _errorMessage.value = "Aucun abonnement actif trouvé. Si tu penses que c'est une erreur, contacte le support."
+                }
+            } else {
+                _errorMessage.value = "Play Store indisponible. Vérifie ta connexion et réessaie."
+            }
+        } catch (e: Exception) {
+            Log.e("Billing", "restorePurchases erreur: ${e.message}", e)
+            _errorMessage.value = "La restauration a échoué. Réessaie dans quelques instants."
+        } finally {
+            _isLoading.value = false
+        }
     }
 
     // MARK: - Validation achats
 
     private suspend fun handlePurchases(purchases: List<Purchase>) {
-        var shouldUpgrade = false
         for (purchase in purchases) {
             if (purchase.purchaseState != Purchase.PurchaseState.PURCHASED) continue
 
-            // Acknowledger si nécessaire
             if (!purchase.isAcknowledged) {
-                val ackParams = AcknowledgePurchaseParams.newBuilder()
-                    .setPurchaseToken(purchase.purchaseToken)
-                    .build()
-                billingClient.acknowledgePurchase(ackParams)
+                val ackResult = billingClient.acknowledgePurchase(
+                    AcknowledgePurchaseParams.newBuilder()
+                        .setPurchaseToken(purchase.purchaseToken)
+                        .build()
+                )
+                if (ackResult.responseCode != BillingClient.BillingResponseCode.OK) {
+                    Log.w("Billing", "Acknowledgment échoué (code ${ackResult.responseCode}) — Play Store retentera automatiquement")
+                }
             }
 
-            shouldUpgrade = true
+            val productId = purchase.products.firstOrNull() ?: continue
+            upgradeUserToPremium(purchase.purchaseToken, productId)
+            break
         }
-        if (shouldUpgrade) upgradeUserToPremium()
     }
 
-    private suspend fun upgradeUserToPremium() {
-        // 1. Sync Supabase EN PREMIER (avant de fermer l'écran)
+    private suspend fun upgradeUserToPremium(purchaseToken: String, productId: String) {
         try {
-            val session = client.auth.currentSessionOrNull()
-            val userId  = session?.user?.id?.toString()
-            if (userId != null) {
-                @Serializable data class TierUpdate(val subscription_tier: String)
-                client.from("users")
-                    .update(TierUpdate("premium")) {
-                        filter { eq("id", userId) }
-                    }
-                Log.d("Billing", "Supabase subscription_tier=premium OK (userId=$userId)")
-            } else {
-                Log.w("Billing", "upgradeUserToPremium: session ou userId null, Supabase non mis à jour")
-            }
+            client.functions.invoke(
+                function = "verify-android-purchase",
+                body = buildJsonObject {
+                    put("purchase_token", purchaseToken)
+                    put("product_id", productId)
+                }
+            )
+            Log.d("Billing", "Edge Function verify-android-purchase OK")
         } catch (e: Exception) {
-            Log.e("Billing", "Supabase premium sync failed: ${e.message}")
+            Log.e("Billing", "Edge Function failed: ${e.message}", e)
+            // Le paiement Play Store a réussi — c'est uniquement l'activation serveur qui a échoué.
+            // checkSubscriptionValidity() récupèrera l'état au prochain démarrage / retour en foreground.
+            _activationFailed.value = true
+            _errorMessage.value = "Ton paiement a bien été traité par Google Play, mais l'activation de ton abonnement a échoué. Appuie sur \"Restaurer\" pour réessayer."
+            return
         }
 
-        // 2. Mise à jour locale — suffit à réactiver toutes les features premium immédiatement
+        _activationFailed.value = false
         userRepo.setSubscriptionTier(SubscriptionTier.PREMIUM)
-
-        // 3. Signal succès — l'écran SubscriptionScreen se ferme seulement ici
+        NotificationManagerCompat.from(application)
+            .cancel(NotificationManager.NOTIFICATION_ID_AUDIO_LIMIT)
         _purchaseSuccess.value = true
     }
 
@@ -256,12 +279,17 @@ class BillingManager private constructor(application: Application) {
             )
             if (result.billingResult.responseCode != BillingClient.BillingResponseCode.OK) return
 
-            val hasActiveSub = result.purchasesList.any {
+            val activePurchase = result.purchasesList.firstOrNull {
                 it.purchaseState == Purchase.PurchaseState.PURCHASED
             }
-            if (!hasActiveSub && userRepo.isPremium && !userRepo.isOGMember.value) {
+
+            if (activePurchase == null && userRepo.isPremium && !userRepo.isOGMember.value) {
                 Log.d("Billing", "Aucun abonnement actif — downgrade vers free")
                 downgradeToFree()
+            } else if (activePurchase != null && !userRepo.isPremium) {
+                Log.d("Billing", "Abonnement actif détecté mais user en free — re-upgrade")
+                val productId = activePurchase.products.firstOrNull() ?: return
+                upgradeUserToPremium(activePurchase.purchaseToken, productId)
             }
         } catch (e: Exception) {
             Log.e("Billing", "checkSubscriptionValidity erreur: ${e.message}")
@@ -270,23 +298,16 @@ class BillingManager private constructor(application: Application) {
 
     private suspend fun downgradeToFree() {
         try {
-            val session = client.auth.currentSessionOrNull()
-            val userId  = session?.user?.id?.toString()
-            if (userId != null) {
-                @Serializable data class TierUpdate(val subscription_tier: String)
-                client.from("users")
-                    .update(TierUpdate("free")) {
-                        filter { eq("id", userId) }
-                    }
-                Log.d("Billing", "Supabase subscription_tier=free OK")
-            }
+            client.functions.invoke("downgrade-android-purchase")
+            Log.d("Billing", "Edge Function downgrade-android-purchase OK")
         } catch (e: Exception) {
-            Log.e("Billing", "Supabase downgrade sync failed: ${e.message}")
+            Log.e("Billing", "Edge Function downgrade failed: ${e.message}", e)
         }
         userRepo.setSubscriptionTier(SubscriptionTier.FREE)
         runCatching { userRepo.loadUserProfile() }
     }
 
-    fun clearError()          { _errorMessage.value   = null  }
+    fun clearError()           { _errorMessage.value   = null  ; _activationFailed.value = false }
     fun resetPurchaseSuccess() { _purchaseSuccess.value = false }
+
 }
