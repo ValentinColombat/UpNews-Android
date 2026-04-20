@@ -489,7 +489,9 @@ private fun AudioPlayer(
             }
             SubcomposeAsyncImage(
                 model = ImageRequest.Builder(context)
-                    .data(article.imageUrl ?: R.drawable.fallback)
+                    .data(article.imageUrl)
+                    .fallback(R.drawable.fallback)
+                    .error(R.drawable.fallback)
                     .size(Size(64, 64))
                     .build(),
                 contentDescription = null,
