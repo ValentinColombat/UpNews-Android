@@ -6,6 +6,7 @@ import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.SessionManager
 import io.github.jan.supabase.auth.user.UserSession
 import io.github.jan.supabase.createSupabaseClient
+import io.github.jan.supabase.functions.Functions
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.realtime.Realtime
 import kotlinx.serialization.encodeToString
@@ -55,6 +56,7 @@ object SupabaseClientProvider {
             }
             install(Postgrest)
             install(Realtime)
+            install(Functions)
         }
     }
 }

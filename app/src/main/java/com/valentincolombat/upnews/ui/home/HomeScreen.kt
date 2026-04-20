@@ -104,6 +104,7 @@ fun HomeScreen(
     onArticleOpenChanged: (Boolean) -> Unit = {},
     viewModel: HomeViewModel = viewModel()
 ) {
+    val isDataReady       by viewModel.isDataReady.collectAsStateWithLifecycle()
     val mainArticle       by viewModel.mainArticle.collectAsStateWithLifecycle()
     val secondaryArticles by viewModel.secondaryArticles.collectAsStateWithLifecycle()
     val displayName       by viewModel.displayName.collectAsStateWithLifecycle()
@@ -156,7 +157,7 @@ fun HomeScreen(
                 .background(UpNewsBackground)
                 .blur(blurRadius)
         ) {
-        if (mainArticle == null && secondaryArticles.isEmpty()) {
+        if (isDataReady && mainArticle == null && secondaryArticles.isEmpty()) {
             EmptyStateView()
         } else {
             Column(
@@ -622,18 +623,15 @@ private fun ArticleListItemCard(
             )
         }
 
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            if (isLocked) {
-                Icon(Icons.Rounded.Diamond, contentDescription = null, tint = UpNewsOrange, modifier = Modifier.size(15.dp))
-            } else {
-                Icon(
-                    imageVector = if (isRead) Icons.Outlined.Check else Icons.Rounded.Visibility,
-                    contentDescription = if (isRead) "Déjà lu" else "Non lu",
-                    tint = if (isRead) Color(0xFF6BBF9A) else Color.Gray.copy(alpha = 0.4f),
-                    modifier = Modifier.size(15.dp)
-                )
-            }
-            Text("›", fontSize = 16.sp, color = Color.Gray)
+        if (isLocked) {
+            Icon(Icons.Rounded.Diamond, contentDescription = null, tint = UpNewsOrange, modifier = Modifier.size(15.dp))
+        } else {
+            Icon(
+                imageVector = if (isRead) Icons.Outlined.Check else Icons.Rounded.Visibility,
+                contentDescription = if (isRead) "Déjà lu" else "Non lu",
+                tint = if (isRead) Color(0xFF6BBF9A) else Color.Gray.copy(alpha = 0.4f),
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }

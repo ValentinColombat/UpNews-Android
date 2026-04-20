@@ -24,8 +24,8 @@ android {
         applicationId = "com.valentincolombat.upnews"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.2.1"
+        versionCode = 8
+        versionName = "1.2.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -84,6 +84,7 @@ dependencies {
     implementation(libs.supabase.auth)
     implementation(libs.supabase.postgrest)
     implementation(libs.supabase.realtime)
+    implementation(libs.supabase.functions)
     // Ktor (HTTP engine pour Supabase)
     implementation(libs.ktor.client.android)
     // Coroutines
@@ -105,6 +106,7 @@ dependencies {
     implementation(libs.billing.ktx)
     implementation(libs.lottie.compose)
     implementation(libs.splashscreen)
+    implementation(libs.androidx.browser)
     implementation(libs.konfetti.compose)
     implementation(libs.konfetti.xml)
     testImplementation(libs.junit)

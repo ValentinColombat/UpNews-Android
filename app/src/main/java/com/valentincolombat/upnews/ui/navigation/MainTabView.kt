@@ -110,7 +110,7 @@ fun MainTabView() {
                         onArticleOpenChanged = { homeArticleOpen = it }
                     )
                     1 -> CompanionsScreen()
-                    2 -> LibraryScreen()
+                    2 -> LibraryScreen(onGoHome = { selectedTab = 0 })
                     3 -> ProfileScreen()
                 }
             }

@@ -7,7 +7,11 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import com.valentincolombat.upnews.MainActivity
+import com.valentincolombat.upnews.R
 import java.util.Calendar
 
 /**
@@ -26,18 +30,53 @@ object NotificationManager {
     const val KEY_LAST_OPEN_DATE = "last_open_date"
     private const val KEY_NOTIF_TIME = "notification_time"
 
-    // MARK: - Channel (à appeler au démarrage de l'app)
+    private const val CHANNEL_ID_PREMIUM = "premium_upsell"
+    internal const val NOTIFICATION_ID_AUDIO_LIMIT = 1002
+
+    // MARK: - Channels (à appeler au démarrage de l'app)
 
     fun createNotificationChannel(context: Context) {
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "Article du jour",
-            AndroidNotificationManager.IMPORTANCE_DEFAULT
-        ).apply {
-            description = "Notification quotidienne pour l'article du jour"
-        }
         val manager = context.getSystemService(AndroidNotificationManager::class.java)
-        manager.createNotificationChannel(channel)
+        manager.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_ID,
+                "Article du jour",
+                AndroidNotificationManager.IMPORTANCE_DEFAULT
+            ).apply { description = "Notification quotidienne pour l'article du jour" }
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_ID_PREMIUM,
+                "Limite audio",
+                AndroidNotificationManager.IMPORTANCE_DEFAULT
+            ).apply { description = "Notification de fin de lecture pour les utilisateurs gratuits" }
+        )
+    }
+
+    // MARK: - Notification limite audio (free users)
+
+    fun postAudioLimitNotification(context: Context) {
+        val tapIntent = PendingIntent.getActivity(
+            context,
+            0,
+            Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_PREMIUM)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(ContextCompat.getColor(context, R.color.upnews_orange))
+            .setContentTitle("Continue à écouter sans limite 🎧")
+            .setContentText("Passe Premium pour profiter de l'audio complet.")
+            .setContentIntent(tapIntent)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+
+        NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_AUDIO_LIMIT, notification)
     }
 
     // MARK: - Permission Status

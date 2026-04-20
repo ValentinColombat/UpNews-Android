@@ -6,10 +6,14 @@ import com.valentincolombat.upnews.data.repository.AuthRepository
 import com.valentincolombat.upnews.data.repository.UserRepository
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.status.SessionStatus
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 class AppStateService private constructor() {
@@ -42,52 +46,72 @@ class AppStateService private constructor() {
     private val authRepository = AuthRepository.shared
     private val userRepository = UserRepository.shared
 
+    /** Scope dédié aux tâches de fond (chargement articles, stats).
+     *  SupervisorJob : une coroutine enfant en échec n'annule pas les autres. */
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     private var lastRefreshTime = 0L
     private val REFRESH_COOLDOWN_MS = 5 * 60 * 1000L
 
     // MARK: - Public Methods
 
-    /** Point d'entrée unique pour initialiser l'app */
+    /** Point d'entrée unique pour initialiser l'app.
+     *
+     *  3 phases distinctes :
+     *
+     *  PHASE A — Auth Gate (locale, < 500ms)
+     *    awaitInitialization() garantit que currentSessionOrNull() est fiable.
+     *    Seule phase pouvant légitimement mener à AUTH.
+     *
+     *  PHASE B — Setup Check (réseau, timeout 10s)
+     *    Vérifie compagnon + profil. Toute erreur réseau → ERROR retryable,
+     *    jamais AUTH (l'utilisateur est authentifié, c'est le réseau qui flanche).
+     *
+     *  PHASE C — Data Loading (arrière-plan, non bloquant)
+     *    L'app navigue vers MAIN dès la phase B validée. Articles et stats
+     *    chargent en fond ; l'UI affiche des skeletons via isDataReady.
+     */
     suspend fun initialize(hasCompletedOnboarding: Boolean) {
         _currentScreen.value = AppScreen.LOADING
 
-        // 1. Onboarding non terminé
+        // Onboarding non terminé — court-circuit immédiat
         if (!hasCompletedOnboarding) {
             _currentScreen.value = AppScreen.ONBOARDING
             return
         }
 
-        // 2. Vérifier authentification
+        // PHASE A — awaitInitialization() attend que le SDK charge + rafraîchisse
+        // le token depuis le stockage local. Aucun timeout : c'est une op locale
+        // (sauf si le refresh réseau échoue, auquel cas awaitInitialization retourne
+        // quand même et currentSessionOrNull() reflète l'état réel).
         authRepository.checkAuthStatus()
-
         if (!authRepository.isAuthenticated.value) {
             _currentScreen.value = AppScreen.AUTH
             return
         }
 
-        // 2b. Vérifier validité abonnement (downgrade si expiré/annulé)
+        // Vérification abonnement en best-effort (jamais bloquante)
         runCatching { BillingManager.shared.checkSubscriptionValidity() }
 
-        // 3-5. Routing utilisateur authentifié — timeout 15s pour éviter un LOADING infini
-        val completed = withTimeoutOrNull(15_000) {
+        // PHASES B + C — timeout 12s : couvre profil + articles + stats
+        val completed = withTimeoutOrNull(12_000) {
             routeAuthenticatedUser(isNewUserFlow = false)
         }
-
         if (completed == null) {
             _currentScreen.value = AppScreen.ERROR
         }
     }
 
-    /** Appelé après connexion (Email ou Google) */
+    /** Appelé après connexion (Email ou Google).
+     *  La session vient d'être créée par signIn/signUp — awaitInitialization()
+     *  retourne immédiatement car le SDK est déjà initialisé. On vérifie juste
+     *  que la session est bien présente avant de router. */
     suspend fun handleAuthentication() {
         _currentScreen.value = AppScreen.LOADING
 
-        // Attendre confirmation de la session (remplace le delay(300) arbitraire)
-        val sessionReady = withTimeoutOrNull(5_000) {
-            SupabaseClient.client.auth.sessionStatus
-                .first { it is SessionStatus.Authenticated }
-        }
-        if (sessionReady == null) {
+        SupabaseClient.client.auth.sessionStatus.first { it !is SessionStatus.Initializing }
+
+        if (SupabaseClient.client.auth.currentSessionOrNull() == null) {
             _currentScreen.value = AppScreen.AUTH
             return
         }
@@ -99,20 +123,20 @@ class AppStateService private constructor() {
     /** Appelé après sélection du compagnon */
     suspend fun handleCompanionSelected() {
         _currentScreen.value = AppScreen.LOADING
-        // Le save est déjà complété (SDK Supabase est synchrone) — pas de delay nécessaire
         loadProfileAndRoute(isNewUserFlow = true)
     }
 
     /** Appelé après sélection des catégories */
     suspend fun handleCategoriesSelected() {
         _currentScreen.value = AppScreen.LOADING
-        // Le save est déjà complété (SDK Supabase est synchrone) — pas de delay nécessaire
         try {
-            userRepository.loadAllData()
-            _currentScreen.value = AppScreen.MAIN
+            userRepository.loadUserProfile()
+            userRepository.loadArticlesAndStats()
         } catch (e: Exception) {
-            _currentScreen.value = AppScreen.AUTH
+            _currentScreen.value = AppScreen.ERROR
+            return
         }
+        _currentScreen.value = AppScreen.MAIN
     }
 
     /** Appelé à la fin de l'onboarding */
@@ -120,21 +144,18 @@ class AppStateService private constructor() {
         _currentScreen.value = AppScreen.AUTH
     }
 
-    /** Appelé au retour au premier plan */
+    /** Appelé au retour au premier plan.
+     *  awaitInitialization() garantit que le refresh token a eu le temps de
+     *  s'exécuter avant qu'on lise l'état de session — élimine les faux négatifs
+     *  sur session expirée encore en cours de renouvellement. */
     suspend fun refreshIfActive() {
         if (_currentScreen.value != AppScreen.MAIN) return
         val now = System.currentTimeMillis()
         if (now - lastRefreshTime < REFRESH_COOLDOWN_MS) return
-        val status = withTimeoutOrNull(3_000) {
-            SupabaseClient.client.auth.sessionStatus
-                .first { it !is SessionStatus.Initializing }
-        } ?: return
-        if (status !is SessionStatus.Authenticated) {
-            // Avant de déconnecter, vérifier le cache local :
-            // un refresh token encore présent signifie que la session est toujours valide
-            // côté serveur, le SDK n'a simplement pas eu le temps de la rafraîchir.
-            val cachedSession = SupabaseClient.client.auth.currentSessionOrNull()
-            if (cachedSession != null) return
+
+        SupabaseClient.client.auth.sessionStatus.first { it !is SessionStatus.Initializing }
+
+        if (SupabaseClient.client.auth.currentSessionOrNull() == null) {
             handleSignOut()
             return
         }
@@ -152,43 +173,56 @@ class AppStateService private constructor() {
 
     // MARK: - Private routing
 
-    /** Vérifie compagnon + pseudo, puis route vers profil/catégories/main.
-     *  [isNewUserFlow] = true uniquement lors d'une connexion/inscription fraîche (handleAuthentication).
-     *  En recovery de session (initialize), pas de compagnon = erreur de chargement → AUTH. */
+    /** PHASE B — vérifie la présence du compagnon et route en conséquence.
+     *
+     *  Règle : une erreur réseau ici ne signifie pas que l'utilisateur n'est pas connecté.
+     *  On route vers ERROR (retryable) et non vers AUTH.
+     *
+     *  [isNewUserFlow] = true uniquement lors d'une connexion/inscription fraîche.
+     *    → pas de compagnon = setup non terminé → COMPANION_SELECTION (normal)
+     *  [isNewUserFlow] = false = recovery de session au démarrage.
+     *    → pas de compagnon = incohérence ou erreur réseau → ERROR retryable */
     private suspend fun routeAuthenticatedUser(isNewUserFlow: Boolean) {
         val hasCompanion = try {
             userRepository.checkCompanion()
         } catch (e: Exception) {
-            _currentScreen.value = AppScreen.AUTH
+            _currentScreen.value = AppScreen.ERROR
             return
         }
 
         if (!hasCompanion) {
-            _currentScreen.value = if (isNewUserFlow) AppScreen.COMPANION_SELECTION else AppScreen.AUTH
+            _currentScreen.value = if (isNewUserFlow) AppScreen.COMPANION_SELECTION else AppScreen.ERROR
             return
         }
 
         loadProfileAndRoute(isNewUserFlow = isNewUserFlow)
     }
 
-    /** Charge le profil et route vers catégories ou main selon les données.
-     *  [isNewUserFlow] = true uniquement quand l'utilisateur vient de choisir son compagnon
-     *  (première configuration). Dans tous les autres cas (recovery de session), des catégories
-     *  vides indiquent une erreur de chargement → AUTH. */
+    /** PHASES B+C — charge le profil et les articles, puis navigue vers MAIN.
+     *
+     *  Tout est bloquant : MAIN n'est affiché qu'une fois toutes les données prêtes,
+     *  ce qui garantit un premier rendu complet sans flash de page blanche.
+     *  En cas d'erreur réseau → ERROR retryable, jamais AUTH. */
     private suspend fun loadProfileAndRoute(isNewUserFlow: Boolean = false) {
         try {
             userRepository.loadUserProfile()
-
-            if (userRepository.preferredCategories.value.isEmpty()) {
-                _currentScreen.value = if (isNewUserFlow) AppScreen.CATEGORY_SELECTION else AppScreen.AUTH
-                return
-            }
-
-            userRepository.loadArticlesAndStats()
-            _currentScreen.value = AppScreen.MAIN
-
         } catch (e: Exception) {
-            _currentScreen.value = AppScreen.AUTH
+            _currentScreen.value = AppScreen.ERROR
+            return
         }
+
+        if (userRepository.preferredCategories.value.isEmpty()) {
+            _currentScreen.value = if (isNewUserFlow) AppScreen.CATEGORY_SELECTION else AppScreen.ERROR
+            return
+        }
+
+        try {
+            userRepository.loadArticlesAndStats()
+        } catch (e: Exception) {
+            _currentScreen.value = AppScreen.ERROR
+            return
+        }
+
+        _currentScreen.value = AppScreen.MAIN
     }
 }

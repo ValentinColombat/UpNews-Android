@@ -2,6 +2,7 @@ package com.valentincolombat.upnews.ui.article
 
 import android.app.Application
 import android.content.Intent
+import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Animatable
 import androidx.compose.animation.core.Animatable
@@ -93,6 +94,7 @@ import coil.compose.AsyncImagePainter
 import coil.compose.SubcomposeAsyncImage
 import coil.compose.SubcomposeAsyncImageContent
 import coil.request.ImageRequest
+import coil.size.Size
 
 import com.valentincolombat.upnews.R
 import com.valentincolombat.upnews.data.model.Article
@@ -115,7 +117,8 @@ import kotlinx.coroutines.launch
 fun ArticleDetailScreen(
     article: Article,
     autoPlayAudio: Boolean = false,
-    onBack: () -> Unit = {}
+    onBack: () -> Unit = {},
+    onGoHome: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val app     = context.applicationContext as Application
@@ -282,7 +285,7 @@ fun ArticleDetailScreen(
                 )
 
                 // Retour accueil
-                ReturnToHomeButton(onBack = onBack)
+                ReturnToHomeButton(onBack = onGoHome ?: onBack)
 
                 // Boutons d'action
                 ActionButtons(
@@ -475,18 +478,25 @@ private fun AudioPlayer(
             .clip(RoundedCornerShape(16.dp))
     ) {
         Box {
-            // Fond : image de l'article floutée
+            // Fond flou : image chargée en 64×64 (pixelation = effet blur sur tous les API).
+            // Sur API 31+ on ajoute Modifier.blur() pour un vrai flou gaussien.
+            // Sur API 26-30 Modifier.blur() est no-op, la basse résolution suffit.
+            val context = LocalContext.current
+            val blurModifier = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                Modifier.matchParentSize().blur(20.dp)
+            } else {
+                Modifier.matchParentSize()
+            }
             SubcomposeAsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
+                model = ImageRequest.Builder(context)
                     .data(article.imageUrl)
                     .fallback(R.drawable.fallback)
                     .error(R.drawable.fallback)
+                    .size(Size(64, 64))
                     .build(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .matchParentSize()
-                    .blur(20.dp)
+                modifier = blurModifier
             ) {
                 when (painter.state) {
                     is AsyncImagePainter.State.Loading -> {
@@ -952,7 +962,7 @@ private fun ActionButtons(
                         tint = if (isFavorite) UpNewsOrange else Color(0xFF3A3A3A),
                         modifier = Modifier.size(22.dp)
                     )
-                    Text("Favoris", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = if (isFavorite) UpNewsOrange else Color(0xFF3A3A3A))
+                    Text("Enregistrer", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = if (isFavorite) UpNewsOrange else Color(0xFF3A3A3A))
                 }
             }
         }

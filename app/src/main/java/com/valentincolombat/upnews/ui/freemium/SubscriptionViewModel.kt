@@ -10,11 +10,12 @@ class SubscriptionViewModel : ViewModel() {
 
     private val billing = BillingManager.shared
 
-    val isLoading:      StateFlow<Boolean>         = billing.isLoading
-    val monthlyProduct: StateFlow<ProductDetails?> = billing.monthlyProduct
-    val yearlyProduct:  StateFlow<ProductDetails?> = billing.yearlyProduct
-    val errorMessage:   StateFlow<String?>         = billing.errorMessage
-    val purchaseSuccess: StateFlow<Boolean>        = billing.purchaseSuccess
+    val isLoading:        StateFlow<Boolean>         = billing.isLoading
+    val monthlyProduct:   StateFlow<ProductDetails?> = billing.monthlyProduct
+    val yearlyProduct:    StateFlow<ProductDetails?> = billing.yearlyProduct
+    val errorMessage:     StateFlow<String?>         = billing.errorMessage
+    val purchaseSuccess:  StateFlow<Boolean>         = billing.purchaseSuccess
+    val activationFailed: StateFlow<Boolean>         = billing.activationFailed
 
     fun purchase(activity: Activity, product: ProductDetails) {
         billing.launchPurchaseFlow(activity, product)

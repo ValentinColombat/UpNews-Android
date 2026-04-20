@@ -20,6 +20,7 @@ class HomeViewModel : ViewModel() {
     private val interactionRepo = InteractionRepository.shared
 
     // Expose UserRepository state — équivalent @EnvironmentObject UserDataService iOS
+    val isDataReady         = repo.isDataReady
     val mainArticle         = repo.mainArticle
     val secondaryArticles   = repo.secondaryArticles
     val displayName         = repo.displayName

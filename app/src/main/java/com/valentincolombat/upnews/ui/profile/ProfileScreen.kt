@@ -219,7 +219,7 @@ fun ProfileScreen(viewModel: ProfileViewModel = viewModel()) {
                         title    = "Politique de confidentialité",
                         iconTint = Color.Gray,
                         onClick  = {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://valentincolombat.github.io/upnews-privacy/")))
+                            com.valentincolombat.upnews.utils.openUrl(context, "https://valentincolombat.github.io/upnews-privacy/")
                         }
                     )
                     SettingsHorizontalDivider()
@@ -320,10 +320,10 @@ private fun ProfileDialogs(
 
     uiState.deleteError?.let {
         AlertDialog(
-            onDismissRequest = {},
+            onDismissRequest = { viewModel.clearDeleteError() },
             title = { Text("Erreur") },
             text  = { Text(it) },
-            confirmButton = { TextButton(onClick = {}) { Text("OK") } }
+            confirmButton = { TextButton(onClick = { viewModel.clearDeleteError() }) { Text("OK") } }
         )
     }
 
@@ -476,6 +476,8 @@ private fun StatChip(icon: ImageVector, value: String, label: String, color: Col
 
 @Composable
 private fun PremiumSection(isPremium: Boolean, onUpgradeTap: () -> Unit, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionTitle(if (isPremium) "Mon abonnement" else "Premium")
 
@@ -514,6 +516,8 @@ private fun PremiumSection(isPremium: Boolean, onUpgradeTap: () -> Unit, modifie
                 }
                 Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = Color.Gray.copy(alpha = 0.4f), modifier = Modifier.size(18.dp))
             }
+
+
         } else {
             // Card upgrade — fond sombre, fort contraste
             Column(

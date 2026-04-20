@@ -57,7 +57,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -178,34 +180,11 @@ fun CompanionsScreen(vm: CompanionsViewModel = viewModel()) {
 
     // Popup compagnon verrouillé
     lockedCompanionPopup?.let { companion ->
-        val message = when {
-            isPremium ->
-                "Ce personnage sera débloqué dès que vous atteindrez le niveau ${companion.unlockLevel}."
-            companion.unlockLevel <= 5 ->
-                "Ce personnage sera débloqué au niveau ${companion.unlockLevel}."
-            else ->
-                "Ce personnage nécessite le niveau ${companion.unlockLevel} et un abonnement Premium."
-        }
-        val showSubscribeButton = !isPremium && companion.unlockLevel > 5
-
-        AlertDialog(
-            onDismissRequest = { vm.dismissLockedPopup() },
-            title = { Text("Compagnon verrouillé") },
-            text  = { Text(message) },
-            confirmButton = {
-                if (showSubscribeButton) {
-                    TextButton(onClick = { vm.dismissLockedPopup(); vm.showPaywall() }) {
-                        Text("Voir Premium", color = UpNewsOrange)
-                    }
-                } else {
-                    TextButton(onClick = { vm.dismissLockedPopup() }) {
-                        Text("OK", color = UpNewsOrange)
-                    }
-                }
-            },
-            dismissButton = if (showSubscribeButton) {
-                { TextButton(onClick = { vm.dismissLockedPopup() }) { Text("Fermer", color = UpNewsOrange) } }
-            } else null
+        LockedCompanionPopup(
+            companion = companion,
+            isPremium = isPremium,
+            onDismiss = { vm.dismissLockedPopup() },
+            onShowPaywall = { vm.dismissLockedPopup(); vm.showPaywall() }
         )
     }
 
@@ -550,6 +529,148 @@ private fun CompanionImage(@DrawableRes drawableId: Int, isLocked: Boolean) {
         colorFilter  = colorFilter,
         modifier     = Modifier.size(100.dp)
     )
+}
+
+// MARK: - Popup compagnon verrouillé
+
+@Composable
+private fun LockedCompanionPopup(
+    companion: CompanionCharacter,
+    isPremium: Boolean,
+    onDismiss: () -> Unit,
+    onShowPaywall: () -> Unit
+) {
+    val needsPremium = !isPremium && companion.unlockLevel > 5
+    val scope = rememberCoroutineScope()
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { visible = true }
+
+    val scale by animateFloatAsState(
+        targetValue = if (visible) 1f else 0.85f,
+        animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.7f, stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow),
+        label = "locked_scale"
+    )
+    val alpha by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.7f, stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow),
+        label = "locked_alpha"
+    )
+
+    fun dismiss() { scope.launch { visible = false; kotlinx.coroutines.delay(180); onDismiss() } }
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = ::dismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.45f))
+                .clickable { dismiss() }
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .padding(horizontal = 40.dp)
+                    .fillMaxWidth()
+                    .graphicsLayer { scaleX = scale; scaleY = scale; this.alpha = alpha }
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(Color.White)
+                    .clickable(enabled = false) {}
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Bouton fermer
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopEnd) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(Color.Gray.copy(alpha = 0.12f))
+                            .clickable { dismiss() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Rounded.Close, null, tint = Color.Gray, modifier = Modifier.size(14.dp))
+                    }
+                }
+
+                // Silhouette + cadenas
+                Box(contentAlignment = Alignment.Center) {
+                    Image(
+                        painter = painterResource(id = companion.drawableId),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        colorFilter = ColorFilter.colorMatrix(ColorMatrix(floatArrayOf(
+                            0f, 0f, 0f, 0f, 0f,
+                            0f, 0f, 0f, 0f, 0f,
+                            0f, 0f, 0f, 0f, 0f,
+                            0f, 0f, 0f, 1f, 0f
+                        ))),
+                        modifier = Modifier.size(180.dp)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(UpNewsOrange),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Rounded.Lock, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    }
+                }
+
+                // Nom + condition
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(companion.name, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+
+                    Row(
+                        modifier = Modifier
+                            .background(UpNewsOrange.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 12.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(Icons.Rounded.Star, null, tint = UpNewsOrange, modifier = Modifier.size(12.dp))
+                        Text("Niveau ${companion.unlockLevel} requis", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = UpNewsOrange)
+                    }
+
+                    if (needsPremium) {
+                        Row(
+                            modifier = Modifier
+                                .background(Color(0xFF7B5CF0).copy(alpha = 0.10f), RoundedCornerShape(20.dp))
+                                .padding(horizontal = 12.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(Icons.Rounded.Diamond, null, tint = Color(0xFF7B5CF0), modifier = Modifier.size(12.dp))
+                            Text("Abonnement Premium requis", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF7B5CF0))
+                        }
+                    }
+                }
+
+                // CTA
+                Button(
+                    onClick = {
+                        if (needsPremium) scope.launch { visible = false; kotlinx.coroutines.delay(180); onShowPaywall() }
+                        else dismiss()
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = UpNewsOrange),
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                ) {
+                    Text(
+                        if (needsPremium) "Voir Premium" else "OK",
+                        fontWeight = FontWeight.Bold, color = Color.White, fontSize = 15.sp
+                    )
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Popup déblocage
