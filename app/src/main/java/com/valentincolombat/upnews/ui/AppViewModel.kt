@@ -13,6 +13,7 @@ import kotlinx.coroutines.launch
 class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     val currentScreen = AppStateService.shared.currentScreen
+    val errorReason = AppStateService.shared.errorReason
 
     private var hasCompletedOnboarding = false
 

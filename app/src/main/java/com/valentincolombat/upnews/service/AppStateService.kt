@@ -1,9 +1,11 @@
 package com.valentincolombat.upnews.service
 
+import android.util.Log
 import com.valentincolombat.upnews.data.billing.BillingManager
 import com.valentincolombat.upnews.data.remote.SupabaseClient
 import com.valentincolombat.upnews.data.repository.AuthRepository
 import com.valentincolombat.upnews.data.repository.UserRepository
+import com.valentincolombat.upnews.utils.isNetworkError
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.status.SessionStatus
 import kotlinx.coroutines.CoroutineScope
@@ -36,10 +38,15 @@ class AppStateService private constructor() {
         ERROR
     }
 
+    enum class ErrorReason { NETWORK, TIMEOUT, SERVER }
+
     // MARK: - State
 
     private val _currentScreen = MutableStateFlow(AppScreen.LOADING)
     val currentScreen: StateFlow<AppScreen> = _currentScreen.asStateFlow()
+
+    private val _errorReason = MutableStateFlow<ErrorReason?>(null)
+    val errorReason: StateFlow<ErrorReason?> = _errorReason.asStateFlow()
 
     // MARK: - Dependencies
 
@@ -52,6 +59,16 @@ class AppStateService private constructor() {
 
     private var lastRefreshTime = 0L
     private val REFRESH_COOLDOWN_MS = 5 * 60 * 1000L
+
+    // MARK: - Private helpers
+
+    private fun showError(reason: ErrorReason) {
+        _errorReason.value = reason
+        _currentScreen.value = AppScreen.ERROR
+    }
+
+    private fun errorReasonFor(e: Exception) =
+        if (e.isNetworkError()) ErrorReason.NETWORK else ErrorReason.SERVER
 
     // MARK: - Public Methods
 
@@ -98,7 +115,8 @@ class AppStateService private constructor() {
             routeAuthenticatedUser(isNewUserFlow = false)
         }
         if (completed == null) {
-            _currentScreen.value = AppScreen.ERROR
+            Log.w("AppStateService", "initialize: timeout after 12s (hasCompletedOnboarding=$hasCompletedOnboarding)")
+            showError(ErrorReason.TIMEOUT)
         }
     }
 
@@ -133,7 +151,7 @@ class AppStateService private constructor() {
             userRepository.loadUserProfile()
             userRepository.loadArticlesAndStats()
         } catch (e: Exception) {
-            _currentScreen.value = AppScreen.ERROR
+            showError(errorReasonFor(e))
             return
         }
         _currentScreen.value = AppScreen.MAIN
@@ -186,12 +204,13 @@ class AppStateService private constructor() {
         val hasCompanion = try {
             userRepository.checkCompanion()
         } catch (e: Exception) {
-            _currentScreen.value = AppScreen.ERROR
+            showError(errorReasonFor(e))
             return
         }
 
         if (!hasCompanion) {
-            _currentScreen.value = if (isNewUserFlow) AppScreen.COMPANION_SELECTION else AppScreen.ERROR
+            if (isNewUserFlow) _currentScreen.value = AppScreen.COMPANION_SELECTION
+            else showError(ErrorReason.SERVER)
             return
         }
 
@@ -207,19 +226,20 @@ class AppStateService private constructor() {
         try {
             userRepository.loadUserProfile()
         } catch (e: Exception) {
-            _currentScreen.value = AppScreen.ERROR
+            showError(errorReasonFor(e))
             return
         }
 
         if (userRepository.preferredCategories.value.isEmpty()) {
-            _currentScreen.value = if (isNewUserFlow) AppScreen.CATEGORY_SELECTION else AppScreen.ERROR
+            if (isNewUserFlow) _currentScreen.value = AppScreen.CATEGORY_SELECTION
+            else showError(ErrorReason.SERVER)
             return
         }
 
         try {
             userRepository.loadArticlesAndStats()
         } catch (e: Exception) {
-            _currentScreen.value = AppScreen.ERROR
+            showError(errorReasonFor(e))
             return
         }
 

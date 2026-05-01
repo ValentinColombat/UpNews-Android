@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.HourglassTop
 import androidx.compose.material.icons.rounded.WifiOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -21,6 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -40,6 +43,7 @@ import com.valentincolombat.upnews.ui.theme.UpNewsGreen
 @Composable
 fun AppContent(viewModel: AppViewModel = viewModel()) {
     val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
+    val errorReason by viewModel.errorReason.collectAsStateWithLifecycle()
 
     when (currentScreen) {
         AppStateService.AppScreen.LOADING           -> LoadingView()
@@ -48,12 +52,40 @@ fun AppContent(viewModel: AppViewModel = viewModel()) {
         AppStateService.AppScreen.COMPANION_SELECTION -> CompanionSelectionScreen()
         AppStateService.AppScreen.CATEGORY_SELECTION  -> CategorySelectionScreen()
         AppStateService.AppScreen.MAIN              -> MainTabView()
-        AppStateService.AppScreen.ERROR             -> StartupErrorView(onRetry = { viewModel.retry() })
+        AppStateService.AppScreen.ERROR             -> StartupErrorView(
+            reason = errorReason,
+            onRetry = { viewModel.retry() }
+        )
     }
 }
 
+private data class ErrorContent(
+    val icon: ImageVector,
+    val title: String,
+    val subtitle: String,
+)
+
+private fun errorContent(reason: AppStateService.ErrorReason?): ErrorContent = when (reason) {
+    AppStateService.ErrorReason.NETWORK -> ErrorContent(
+        icon = Icons.Rounded.WifiOff,
+        title = "Pas de connexion",
+        subtitle = "Vérifie ta connexion internet et réessaie."
+    )
+    AppStateService.ErrorReason.TIMEOUT -> ErrorContent(
+        icon = Icons.Rounded.HourglassTop,
+        title = "Chargement trop long",
+        subtitle = "Le serveur met trop de temps à répondre. Réessaie dans quelques instants."
+    )
+    AppStateService.ErrorReason.SERVER, null -> ErrorContent(
+        icon = Icons.Rounded.CloudOff,
+        title = "Une erreur est survenue",
+        subtitle = "Un problème nous a empêché de charger tes données. Réessaie dans quelques instants."
+    )
+}
+
 @Composable
-private fun StartupErrorView(onRetry: () -> Unit) {
+private fun StartupErrorView(reason: AppStateService.ErrorReason?, onRetry: () -> Unit) {
+    val content = errorContent(reason)
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -66,20 +98,20 @@ private fun StartupErrorView(onRetry: () -> Unit) {
             modifier = Modifier.padding(horizontal = 40.dp)
         ) {
             Icon(
-                imageVector = Icons.Rounded.WifiOff,
+                imageVector = content.icon,
                 contentDescription = null,
                 tint = Color.Gray.copy(alpha = 0.5f),
                 modifier = Modifier.size(48.dp)
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Connexion impossible",
+                text = content.title,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = Color.Black
             )
             Text(
-                text = "Vérifie ta connexion internet et réessaie.",
+                text = content.subtitle,
                 fontSize = 14.sp,
                 color = Color.Gray,
                 textAlign = TextAlign.Center
