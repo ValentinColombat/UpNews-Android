@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 
@@ -125,7 +126,9 @@ class ArticleDetailViewModel(
                 controllerFuture = future
                 val controller = future.await()
                 mediaController = controller
-                setupPlayer(controller, url)
+                setupPlayerMutex.withLock {
+                    setupPlayer(controller, url)
+                }
                 if (pendingPlay) {
                     pendingPlay = false
                     controller.play()
@@ -328,7 +331,6 @@ class ArticleDetailViewModel(
         playerListener = null
         controllerFuture?.cancel(true)
         controllerFuture = null
-        mediaController?.release()
         mediaController = null
     }
 
@@ -348,6 +350,7 @@ class ArticleDetailViewModel(
     companion object {
         // Artwork calculé une seule fois en arrière-plan, partagé entre toutes les instances
         @Volatile private var cachedLockScreenArtwork: ByteArray? = null
+        private val setupPlayerMutex = Mutex()
 
         private suspend fun lockScreenArtwork(context: Context): ByteArray {
             cachedLockScreenArtwork?.let { return it }
