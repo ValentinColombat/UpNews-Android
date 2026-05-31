@@ -813,7 +813,7 @@ private fun SourceSection(article: Article, context: android.content.Context) {
         Icon(Icons.Rounded.Link, contentDescription = null, tint = UpNewsBlueMid, modifier = Modifier.size(14.dp))
         if (article.sourceUrl != null) {
             Text(
-                text = article.sourceUrl.take(50),
+                text = "Source : ${publisherName(article.sourceUrl)}",
                 fontSize = 12.sp,
                 color = UpNewsBlueMid,
                 textDecoration = TextDecoration.Underline,
@@ -828,6 +828,17 @@ private fun SourceSection(article: Article, context: android.content.Context) {
             Text("Source non disponible", fontSize = 12.sp, color = Color.Gray)
         }
     }
+}
+
+/**
+ * Extrait le nom de l'éditeur depuis une URL source.
+ * Ex : "https://www.lemonde.fr/sciences/article/..." → "lemonde.fr"
+ * Fallback : l'URL brute tronquée si le parsing échoue.
+ */
+private fun publisherName(url: String): String {
+    val host = runCatching { android.net.Uri.parse(url).host }.getOrNull()
+        ?: return url.take(50)
+    return host.removePrefix("www.")
 }
 
 // MARK: - XP Section

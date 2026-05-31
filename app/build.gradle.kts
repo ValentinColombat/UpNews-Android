@@ -24,8 +24,8 @@ android {
         applicationId = "com.valentincolombat.upnews"
         minSdk = 26
         targetSdk = 36
-        versionCode = 9
-        versionName = "1.2.5"
+        versionCode = 11
+        versionName = "1.2.7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
