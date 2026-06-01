@@ -42,6 +42,7 @@ import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.MailOutline
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Pets
 import androidx.compose.material.icons.rounded.PrivacyTip
@@ -220,6 +221,20 @@ fun ProfileScreen(viewModel: ProfileViewModel = viewModel()) {
                         iconTint = Color.Gray,
                         onClick  = {
                             com.valentincolombat.upnews.utils.openUrl(context, "https://valentincolombat.github.io/upnews-privacy/")
+                        }
+                    )
+                    SettingsHorizontalDivider()
+                    SettingsRow(
+                        icon     = Icons.Rounded.MailOutline,
+                        title    = "Nous contacter",
+                        value    = "valentincolombat@gmail.com",
+                        iconTint = UpNewsBlueMid,
+                        onClick  = {
+                            val intent = Intent(Intent.ACTION_SENDTO).apply {
+                                data = Uri.parse("mailto:valentincolombat@gmail.com")
+                                putExtra(Intent.EXTRA_SUBJECT, "UpNews – Support")
+                            }
+                            context.startActivity(Intent.createChooser(intent, "Nous contacter"))
                         }
                     )
                     SettingsHorizontalDivider()
