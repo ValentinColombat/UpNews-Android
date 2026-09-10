@@ -41,7 +41,6 @@ import kotlinx.coroutines.launch
 class BillingManager private constructor(private val application: Application) {
 
     companion object {
-        // TODO: Remplacer par les vrais IDs Play Console
         const val PRODUCT_MONTHLY = "premium_monthly"
         const val PRODUCT_YEARLY  = "premium_yearly"
 
@@ -113,6 +112,7 @@ class BillingManager private constructor(private val application: Application) {
                 .enableOneTimeProducts()
                 .build()
         )
+        .enableAutoServiceReconnection()
         .build()
 
     // MARK: - Init
@@ -129,7 +129,7 @@ class BillingManager private constructor(private val application: Application) {
                 }
             }
             override fun onBillingServiceDisconnected() {
-                // Reconnexion automatique gérée par BillingClient
+                // Reconnexion gérée par enableAutoServiceReconnection() sur le builder
             }
         })
     }
